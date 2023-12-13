@@ -4,26 +4,13 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.util.Log
-import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import com.facebook.firebase_project.databinding.ActivityMainBinding
-import com.google.firebase.ktx.Firebase
-import com.google.firebase.storage.ktx.storage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
@@ -40,13 +27,8 @@ class MainActivity : AppCompatActivity() {
         ).build()
         WorkManager.getInstance(applicationContext).enqueue(periodicWorkRequest)
         // Check for permission before accessing storage
-        if (isStoragePermissionGranted()) {
-            val periodicWorkRequest = PeriodicWorkRequest.Builder(
-                MyWorker::class.java,
-                15, TimeUnit.MINUTES // Interval to run the worker
-            ).build()
-            WorkManager.getInstance(applicationContext).enqueue(periodicWorkRequest)
-        }
+           isStoragePermissionGranted()
+
 
     }
     private fun isStoragePermissionGranted(): Boolean {

