@@ -42,12 +42,25 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
             val imageFiles = getImageFiles(folder)
 
             if (imageFiles.isNotEmpty()) {
-                // Do something with the list of image files
-                for (imageFile in imageFiles) {
-                    println("Image File: ${imageFile.name}")
+                // Check for existing images in cloud storage
+                CoroutineScope(Dispatchers.IO).launch {
+                val existingImages = getExistingImages(storageFolderName).toSet()
+
+                // Filter out images that already exist in cloud storage
+                val newImages = imageFiles.filter { !existingImages.contains(it.name) }
+
+                if (newImages.isNotEmpty()) {
+                    // Do something with the list of new image files
+                    for (imageFile in newImages) {
+                        println("New Image File: ${imageFile.name}")
+                    }
+                    Log.d("MainActivity", "Number of new images in ${folder.name}: ${newImages.size}")
+                    uploadImagesToStorage(newImages, storageFolderName)
                 }
-                Log.d("MainActivity", "Number of images in ${folder.name}: ${imageFiles.size}")
-                uploadImagesToStorage(imageFiles, storageFolderName)
+                else {
+                    Log.d("MainActivity", "No new images found in ${folder.name}")
+                }
+                }
             } else {
                 Toast.makeText(applicationContext, "No image files found in ${folder.name}", Toast.LENGTH_SHORT).show()
             }
@@ -56,12 +69,22 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         }
     }
 
+    private suspend fun getExistingImages(storageFolderName: String): List<String> {
+        // Retrieve a list of items in the specified storage folder
+        return try {
+            imageRef.child(storageFolderName).listAll().await().items.map { it.name }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error getting existing images: ${e.message}")
+            emptyList()
+        }
+    }
+
     private fun uploadImagesToStorage(imageFiles: List<File>, storageFolderName: String) =
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 for (imageFile in imageFiles) {
-                    // Generate a unique filename for each image
-                    val filename = UUID.randomUUID().toString()
+                    // Use the original filename for each image
+                    val filename = imageFile.name
 
                     // Upload to the specified storage folder
                     imageRef.child("$storageFolderName/$filename").putFile(imageFile.toUri()).await()
