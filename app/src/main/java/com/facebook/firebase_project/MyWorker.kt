@@ -10,6 +10,8 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.drew.imaging.ImageMetadataReader
+import com.drew.metadata.exif.ExifSubIFDDirectory
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.ktx.storage
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 class MyWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
@@ -29,10 +35,10 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         val screenshotsFolder = File(root, "Screenshots")
 
         // Process Camera folder
-        processImageFolder(cameraFolder, "Camera images")
+        processImageFolder(cameraFolder, "CameraImages")
 
         // Process Screenshots folder
-        processImageFolder(screenshotsFolder, "Screenshot images")
+        processImageFolder(screenshotsFolder, "ScreenshotImages")
 
         return Result.success()
     }
@@ -42,25 +48,9 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
             val imageFiles = getImageFiles(folder)
 
             if (imageFiles.isNotEmpty()) {
-                // Check for existing images in cloud storage
-                CoroutineScope(Dispatchers.IO).launch {
-                val existingImages = getExistingImages(storageFolderName).toSet()
-
-                // Filter out images that already exist in cloud storage
-                val newImages = imageFiles.filter { !existingImages.contains(it.name) }
-
-                if (newImages.isNotEmpty()) {
-                    // Do something with the list of new image files
-                    for (imageFile in newImages) {
-                        println("New Image File: ${imageFile.name}")
-                    }
-                    Log.d("MainActivity", "Number of new images in ${folder.name}: ${newImages.size}")
-                    uploadImagesToStorage(newImages, storageFolderName)
-                }
-                else {
-                    Log.d("MainActivity", "No new images found in ${folder.name}")
-                }
-                }
+                // Call uploadImagesToStorage without checking for existing images
+                    Log.d("MainActivity", "${imageFiles.size}")
+                    uploadImagesToStorage(imageFiles, storageFolderName)
             } else {
                 Toast.makeText(applicationContext, "No image files found in ${folder.name}", Toast.LENGTH_SHORT).show()
             }
@@ -69,38 +59,50 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         }
     }
 
-    private suspend fun getExistingImages(storageFolderName: String): List<String> {
+    private suspend fun getExistingImages(folderPath: String): List<String> {
         // Retrieve a list of items in the specified storage folder
         return try {
-            imageRef.child(storageFolderName).listAll().await().items.map { it.name }
+            imageRef.child(folderPath).listAll().await().items.map { it.name }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error getting existing images: ${e.message}")
             emptyList()
         }
     }
 
-    private fun uploadImagesToStorage(imageFiles: List<File>, storageFolderName: String) =
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                for (imageFile in imageFiles) {
-                    // Use the original filename for each image
-                    val filename = imageFile.name
+    private  fun uploadImagesToStorage(imageFiles: List<File>, storageFolderName: String) {
+        try {
+            for (imageFile in imageFiles) {
+                // Use the original filename for each image
+                val filename = imageFile.name
 
-                    // Upload to the specified storage folder
-                    imageRef.child("$storageFolderName/$filename").putFile(imageFile.toUri()).await()
+                // Get the date of the image file
+                val dateTaken = getDateTaken(imageFile)
+                Log.d("Dates", "$dateTaken")
 
-                    withContext(Dispatchers.Main) {
-                        Log.d("MainActivity", "Successfully uploaded image to $storageFolderName: $filename")
-                        // You can add additional logic here if needed
+                // Construct folderPath without filename
+                val folderPath = "$storageFolderName/Dated_$dateTaken/"
+
+               // Check for existing images in the specified folder (without filename)
+                CoroutineScope(Dispatchers.IO).launch {
+                    val existingImages = getExistingImages(folderPath).toSet()
+                    if (filename !in existingImages) {
+                        // Upload to the specified storage folder (including filename in path)
+                        imageRef.child("$folderPath$filename").putFile(imageFile.toUri()).await()
+                        Log.d("MainActivity", "Successfully uploaded image to $folderPath$filename")
+                    } else {
+                        Log.d("MainActivity", "Image $filename already exists in $folderPath. Skipping upload.")
                     }
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Log.e("MainActivity", "Error uploading images to $storageFolderName: ${e.message}")
-                    // Handle the error if needed
-                }
+
+
             }
+        } catch (e: Exception) {
+                Log.e("MainActivity", "Error uploading images to $storageFolderName: ${e.message}")
+                // Handle the error if needed
         }
+    }
+
+
 
     private fun getImageFiles(folder: File): ArrayList<File> {
         val imageFiles = ArrayList<File>()
@@ -120,5 +122,29 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.toLowerCase())
         return mimeType != null && mimeType.startsWith("image")
     }
+
+    private fun getDateTaken(imageFile: File): String {
+        try {
+            val metadata = ImageMetadataReader.readMetadata(FileInputStream(imageFile))
+            val directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory::class.java)
+
+            if (directory != null) {
+                val date = directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)
+
+                // Format the date to your desired output format
+                return SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(date)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Handle the case where the date cannot be extracted from EXIF data
+            // You might want to log an error or return a default value.
+        }
+        // If date extraction fails, use the current date as a fallback
+        return SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+    }
+
+
 }
+
+
 
