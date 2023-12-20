@@ -1,8 +1,8 @@
 package com.facebook.firebase_project
 
 // MyWorker.kt
-
 import android.content.Context
+import android.media.ExifInterface
 import android.os.Environment
 import android.util.Log
 import android.webkit.MimeTypeMap
@@ -18,13 +18,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
 class MyWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     private val imageRef = Firebase.storage.reference
@@ -49,8 +46,8 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
 
             if (imageFiles.isNotEmpty()) {
                 // Call uploadImagesToStorage without checking for existing images
-                    Log.d("MainActivity", "${imageFiles.size}")
-                    uploadImagesToStorage(imageFiles, storageFolderName)
+                Log.d("MainActivity", "${imageFiles.size}")
+                uploadImagesToStorage(imageFiles, storageFolderName)
             } else {
                 Toast.makeText(applicationContext, "No image files found in ${folder.name}", Toast.LENGTH_SHORT).show()
             }
@@ -73,16 +70,15 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         try {
             for (imageFile in imageFiles) {
                 // Use the original filename for each image
-                val filename = imageFile.name
+                val filename = imageFile.name.replace("_", "")
 
                 // Get the date of the image file
-                val dateTaken = getDateTaken(imageFile)
+               val dateTaken = getCaptureDate(imageFile)
                 Log.d("Dates", "$dateTaken")
-
                 // Construct folderPath without filename
                 val folderPath = "$storageFolderName/Dated_$dateTaken/"
 
-               // Check for existing images in the specified folder (without filename)
+                // Check for existing images in the specified folder (without filename)
                 CoroutineScope(Dispatchers.IO).launch {
                     val existingImages = getExistingImages(folderPath).toSet()
                     if (filename !in existingImages) {
@@ -97,8 +93,8 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
 
             }
         } catch (e: Exception) {
-                Log.e("MainActivity", "Error uploading images to $storageFolderName: ${e.message}")
-                // Handle the error if needed
+            Log.e("MainActivity", "Error uploading images to $storageFolderName: ${e.message}")
+            // Handle the error if needed
         }
     }
 
@@ -122,21 +118,21 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.toLowerCase())
         return mimeType != null && mimeType.startsWith("image")
     }
-
-    private fun getDateTaken(imageFile: File): String {
+    private fun getCaptureDate(imageFile: File): String {
         try {
-            val metadata = ImageMetadataReader.readMetadata(FileInputStream(imageFile))
-            val directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory::class.java)
+            val exif = ExifInterface(imageFile.path)
+            val dateString = exif.getAttribute(ExifInterface.TAG_DATETIME)
 
-            if (directory != null) {
-                val date = directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)
+            if (!dateString.isNullOrEmpty()) {
+                // Parse the date string to a Date object
+                val date = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault()).parse(dateString)
 
                 // Format the date to your desired output format
                 return SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(date)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // Handle the case where the date cannot be extracted from EXIF data
+            // Handle the case where the date cannot be extracted from metadata
             // You might want to log an error or return a default value.
         }
         // If date extraction fails, use the current date as a fallback
@@ -144,7 +140,5 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
     }
 
 
+
 }
-
-
-
