@@ -136,9 +136,8 @@ class MyWorker(context: Context, params: WorkerParameters) : Worker(context, par
             // You might want to log an error or return a default value.
         }
         // If date extraction fails, use the current date as a fallback
-        return SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+        return "Different-FormatFolder"
     }
-
 
 
 }
